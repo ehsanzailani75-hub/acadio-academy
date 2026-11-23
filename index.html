@@ -224,5 +224,168 @@ supabase.auth.onAuthStateChange((_event, session) => {
   showUser(session?.user ?? null);
 });
 </script>
+
+<section id="radioNetwork" class="card" style="max-width:800px;margin:24px auto;padding:20px;background:#101d30;color:white;border:1px solid #164e63;border-radius:16px">
+  <div style="color:#22d3ee;font-weight:bold;letter-spacing:2px">ACADIO NETWORK</div>
+  <h2 style="margin:8px 0">📻 Radio Control</h2>
+  <p id="radioStatus" style="color:#94a3b8">Disconnected</p>
+
+  <label for="radioChannel">Public Channel</label>
+  <select id="radioChannel" style="display:block;width:100%;padding:12px;margin:8px 0 14px;background:#172b43;color:white;border:1px solid #28718a;border-radius:8px">
+    <option value="acadio-public-01">Channel 01</option>
+    <option value="acadio-public-02">Channel 02</option>
+    <option value="acadio-public-03">Channel 03</option>
+  </select>
+
+  <button id="radioConnect" style="padding:12px 18px;background:#0891b2;color:white;border:0;border-radius:8px">Connect</button>
+  <button id="radioDisconnect" style="padding:12px 18px;background:#475569;color:white;border:0;border-radius:8px" disabled>Disconnect</button>
+
+  <div style="margin:25px 0;text-align:center">
+    <button id="radioPTT" disabled style="width:190px;height:100px;border-radius:18px;background:#164e63;color:white;border:2px solid #22d3ee;font-size:20px;font-weight:bold;touch-action:none">
+      HOLD TO TALK
+    </button>
+    <p style="font-size:12px;color:#94a3b8">Tekan dan tahan untuk bercakap</p>
+  </div>
+
+  <h3>Network Log</h3>
+  <div id="radioLog" style="background:#0b1422;padding:12px;border-radius:8px;min-height:55px;color:#a5f3fc;font-size:13px">Radio system ready.</div>
+</section>
+
+<script type="module">
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { Room, RoomEvent, Track } from "https://esm.sh/livekit-client";
+
+const supabase = createClient(
+  "https://eofcztzayqznmudfpxis.supabase.co",
+  "sb_publishable_95DaG4l3mz_fi6_I9NkkfQ_moq_Vhti"
+);
+
+const LIVEKIT_URL = "wss://acadio-academy-b3su1ekb.livekit.cloud";
+
+const status = document.getElementById("radioStatus");
+const log = document.getElementById("radioLog");
+const connectBtn = document.getElementById("radioConnect");
+const disconnectBtn = document.getElementById("radioDisconnect");
+const ptt = document.getElementById("radioPTT");
+const channel = document.getElementById("radioChannel");
+
+let room = null;
+let transmitting = false;
+
+function setStatus(message) {
+  status.textContent = message;
+  log.textContent = message;
+}
+
+async function connectRadio() {
+  connectBtn.disabled = true;
+  setStatus("Connecting...");
+
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+
+    if (!sessionData.session) {
+      throw new Error("Please login to ACADIO first.");
+    }
+
+    const roomName = channel.value;
+
+    const { data, error } = await supabase.functions.invoke(
+      "livekit-token",
+      { body: { roomName } }
+    );
+
+    if (error) throw error;
+    if (!data?.token) throw new Error("Voice token unavailable.");
+
+    room = new Room();
+
+    room.on(RoomEvent.TrackSubscribed, (track) => {
+      if (track.kind === Track.Kind.Audio) {
+        const audio = track.attach();
+        audio.autoplay = true;
+        document.body.appendChild(audio);
+      }
+    });
+
+    room.on(RoomEvent.Disconnected, () => {
+      ptt.disabled = true;
+      disconnectBtn.disabled = true;
+      connectBtn.disabled = false;
+      setStatus("Disconnected");
+      room = null;
+    });
+
+    await room.connect(LIVEKIT_URL, data.token);
+
+    ptt.disabled = false;
+    disconnectBtn.disabled = false;
+    channel.disabled = true;
+    setStatus("Connected to " + roomName);
+  } catch (error) {
+    setStatus("Error: " + error.message);
+    connectBtn.disabled = false;
+    if (room) {
+      await room.disconnect();
+      room = null;
+    }
+  }
+}
+
+async function startTalking() {
+  if (!room || transmitting) return;
+
+  try {
+    transmitting = true;
+    await room.localParticipant.setMicrophoneEnabled(true);
+    ptt.textContent = "TRANSMITTING";
+    ptt.style.background = "#b45309";
+  } catch (error) {
+    transmitting = false;
+    setStatus("Microphone error: " + error.message);
+  }
+}
+
+async function stopTalking() {
+  if (!room || !transmitting) return;
+
+  transmitting = false;
+
+  try {
+    await room.localParticipant.setMicrophoneEnabled(false);
+  } catch (_) {}
+
+  ptt.textContent = "HOLD TO TALK";
+  ptt.style.background = "#164e63";
+}
+
+async function disconnectRadio() {
+  await stopTalking();
+
+  if (room) await room.disconnect();
+
+  ptt.disabled = true;
+  disconnectBtn.disabled = true;
+  connectBtn.disabled = false;
+  channel.disabled = false;
+  setStatus("Disconnected");
+  room = null;
+}
+
+connectBtn.addEventListener("click", connectRadio);
+disconnectBtn.addEventListener("click", disconnectRadio);
+
+ptt.addEventListener("pointerdown", (event) => {
+  event.preventDefault();
+  startTalking();
+});
+
+["pointerup", "pointercancel", "lostpointercapture"].forEach(eventName => {
+  ptt.addEventListener(eventName, stopTalking);
+});
+
+window.addEventListener("pointerup", stopTalking);
+window.addEventListener("blur", stopTalking);
+</script>
 </body>
 </html>
