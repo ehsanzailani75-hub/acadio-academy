@@ -123,5 +123,106 @@ function nextQuestion(){q=(q+1)%questions.length;loadQuestion()}
 function saveName(){let n=document.getElementById("studentName").value.trim();localStorage.setItem("acadioName",n);document.getElementById("nameSaved").textContent=n?`Profil disimpan: ${n}`:"Nama paparan dikosongkan."}
 document.getElementById("studentName").value=localStorage.getItem("acadioName")||"";renderAlphabet();renderModules();loadQuestion();updateStats();
 </script>
+
+<!-- ACADIO ACCOUNT SYSTEM -->
+<section class="card" id="acadioAuth" style="max-width:600px;margin:20px auto">
+  <div class="tag">ACADIO ACCOUNT</div>
+  <h3>Member Access</h3>
+  <p class="muted" id="authStatus">Belum log masuk.</p>
+
+  <div id="authForm">
+    <label for="authEmail">Email</label>
+    <input id="authEmail" type="email" placeholder="Email anda">
+
+    <label for="authPassword">Password</label>
+    <input id="authPassword" type="password" placeholder="Minimum 8 aksara">
+
+    <button id="registerBtn">Create Account</button>
+    <button id="loginBtn">Login</button>
+  </div>
+
+  <button id="logoutBtn" hidden>Logout</button>
+</section>
+
+<script type="module">
+import { createClient } from
+  "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
+
+const supabase = createClient(
+  "https://eofcztzayqznmudfpxis.supabase.co",
+  "sb_publishable_95DaG4l3mz_fi6_I9NkkfQ_moq_Vhti"
+);
+
+const statusText = document.getElementById("authStatus");
+const authForm = document.getElementById("authForm");
+const logoutBtn = document.getElementById("logoutBtn");
+
+function showUser(user) {
+  if (user) {
+    statusText.textContent = "Logged in successfully.";
+    authForm.hidden = true;
+    logoutBtn.hidden = false;
+  } else {
+    statusText.textContent = "Belum log masuk.";
+    authForm.hidden = false;
+    logoutBtn.hidden = true;
+  }
+}
+
+document.getElementById("registerBtn").onclick = async () => {
+  const email = document.getElementById("authEmail").value.trim();
+  const password = document.getElementById("authPassword").value;
+
+  if (!email || password.length < 8) {
+    statusText.textContent = "Masukkan email dan password minimum 8 aksara.";
+    return;
+  }
+
+  statusText.textContent = "Mendaftarkan akaun...";
+
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password
+  });
+
+  statusText.textContent = error
+    ? error.message
+    : data.session
+      ? "Akaun berjaya didaftarkan!"
+      : "Semak email untuk pengesahan akaun.";
+};
+
+document.getElementById("loginBtn").onclick = async () => {
+  const email = document.getElementById("authEmail").value.trim();
+  const password = document.getElementById("authPassword").value;
+
+  statusText.textContent = "Sedang log masuk...";
+
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password
+  });
+
+  if (error) {
+    statusText.textContent = error.message;
+    return;
+  }
+
+  showUser(data.user);
+};
+
+logoutBtn.onclick = async () => {
+  const { error } = await supabase.auth.signOut();
+  statusText.textContent = error ? error.message : "Anda telah log keluar.";
+  if (!error) showUser(null);
+};
+
+const { data: { session } } = await supabase.auth.getSession();
+showUser(session?.user ?? null);
+
+supabase.auth.onAuthStateChange((_event, session) => {
+  showUser(session?.user ?? null);
+});
+</script>
 </body>
 </html>
